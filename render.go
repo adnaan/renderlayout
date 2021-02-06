@@ -112,6 +112,10 @@ func RenderError(error string) LayoutRendererOption {
 	}
 }
 
+func StaticView(w http.ResponseWriter, r *http.Request) (M, error) {
+	return M{}, nil
+}
+
 func New(opts ...LayoutRendererOption) (*LayoutRenderer, error) {
 
 	d := &LayoutRenderer{
