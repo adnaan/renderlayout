@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <title>{{.app_name}}</title>
+    {{include "partials/header"}}
+</head>
+<body>
+{{include "partials/navbar"}}
+<div>
+    {{if .error}}
+        <div>
+            <p>{{.error}}</p>
+        </div>
+    {{end}}
+    {{template "content" .}}
+</div>
+{{include "partials/footer"}}
+</body>
+</html>
