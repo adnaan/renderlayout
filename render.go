@@ -253,3 +253,36 @@ func (lr *LayoutRenderer) Handle(view string, viewHandlerFunc ViewHandlerFunc) h
 
 	})
 }
+
+func (lr *LayoutRenderer) HandleStatic(view string, data M) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		viewData := make(map[string]interface{})
+		if lr.defaultHandler != nil {
+			defaultData, err := lr.defaultHandler(w, r)
+			if err != nil {
+				log.Println("renderlayout:defaultHandler func => ", err)
+				viewError := errors.Unwrap(err)
+				if viewError != nil {
+					viewData[lr.errorKey] = first(strings.ToLower(viewError.Error()))
+				} else {
+					viewData[lr.errorKey] = lr.defaultError
+				}
+			}
+
+			for k, v := range defaultData {
+				viewData[k] = v
+			}
+		}
+
+		for k, v := range data {
+			viewData[k] = v
+		}
+
+		err := lr.viewEngine.Render(w, http.StatusOK, view, viewData)
+		if err != nil {
+			fmt.Printf("renderlayout:render error: %v with data %v \n", err, viewData)
+			fmt.Fprintf(w, lr.renderError)
+			return
+		}
+	})
+}
