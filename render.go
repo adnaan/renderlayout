@@ -254,7 +254,11 @@ func (lr *LayoutRenderer) Handle(view string, viewHandlerFunc ViewHandlerFunc) h
 	})
 }
 
-func (lr *LayoutRenderer) HandleStatic(view string, data M) http.HandlerFunc {
+func (lr *LayoutRenderer) HandleStatic(view string) http.HandlerFunc {
+	return lr.HandleStaticWithData(view, nil)
+}
+
+func (lr *LayoutRenderer) HandleStaticWithData(view string, data M) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		viewData := make(map[string]interface{})
 		if lr.defaultHandler != nil {
