@@ -240,13 +240,13 @@ func (lr *LayoutRenderer) Handle(view string, viewHandlerFunc ViewHandlerFunc) h
 			}
 		}
 
-		for k, v := range viewData {
-			data[k] = v
+		for k, v := range data {
+			viewData[k] = v
 		}
 
-		err = lr.viewEngine.Render(w, http.StatusOK, view, data)
+		err = lr.viewEngine.Render(w, http.StatusOK, view, viewData)
 		if err != nil {
-			fmt.Printf("renderlayout:render error: %v with data %v \n", err, data)
+			fmt.Printf("renderlayout:render error: %v with data %v \n", err, viewData)
 			fmt.Fprintf(w, lr.renderError)
 			return
 		}
