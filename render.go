@@ -203,7 +203,7 @@ func first(str string) string {
 	return string(tmp)
 }
 
-func (lr *LayoutRenderer) Handle(view string, viewHandlerFunc ViewHandlerFunc) http.HandlerFunc {
+func (lr *LayoutRenderer) Handle(view string, viewHandlerFuncs ...ViewHandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		viewData := make(map[string]interface{})
 		if lr.defaultHandler != nil {
@@ -223,28 +223,31 @@ func (lr *LayoutRenderer) Handle(view string, viewHandlerFunc ViewHandlerFunc) h
 			}
 		}
 
-		data, err := viewHandlerFunc(w, r)
-		if err != nil {
-			log.Println("renderlayout:viewHandlerFunc => ", err)
-			viewError := errors.Unwrap(err)
-			if viewError != nil {
-				if viewData[lr.errorKey] != nil {
-					viewData[lr.errorKey] = fmt.Sprintf("%s %s",
-						viewData[lr.errorKey],
-						first(strings.ToLower(viewError.Error())))
+		// `errorkey` errors are merged. everything else is overwritten
+		for _, viewHandlerFunc := range viewHandlerFuncs {
+			data, err := viewHandlerFunc(w, r)
+			if err != nil {
+				log.Println("renderlayout:viewHandlerFunc => ", err)
+				viewError := errors.Unwrap(err)
+				if viewError != nil {
+					if viewData[lr.errorKey] != nil {
+						viewData[lr.errorKey] = fmt.Sprintf("%s %s",
+							viewData[lr.errorKey],
+							first(strings.ToLower(viewError.Error())))
+					} else {
+						viewData[lr.errorKey] = first(strings.ToLower(viewError.Error()))
+					}
 				} else {
-					viewData[lr.errorKey] = first(strings.ToLower(viewError.Error()))
+					viewData[lr.errorKey] = lr.defaultError
 				}
-			} else {
-				viewData[lr.errorKey] = lr.defaultError
+			}
+
+			for k, v := range data {
+				viewData[k] = v
 			}
 		}
 
-		for k, v := range data {
-			viewData[k] = v
-		}
-
-		err = lr.viewEngine.Render(w, http.StatusOK, view, viewData)
+		err := lr.viewEngine.Render(w, http.StatusOK, view, viewData)
 		if err != nil {
 			fmt.Printf("renderlayout:render error: %v with data %v \n", err, viewData)
 			fmt.Fprintf(w, lr.renderError)
