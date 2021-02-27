@@ -6,15 +6,9 @@
     {{include "partials/header"}}
 </head>
 <body>
-{{include "partials/navbar"}}
-<div>
-    {{if .error}}
-        <div>
-            <p>{{.error}}</p>
-        </div>
-    {{end}}
+    {{include "partials/navbar"}}
+    {{template "errors" .}}
     {{template "content" .}}
-</div>
-{{include "partials/footer"}}
+    {{include "partials/footer"}}
 </body>
 </html>

@@ -13,6 +13,7 @@ import (
 func main() {
 	indexLayout, err := rl.New(
 		rl.Layout("index"),
+		rl.Debug(true),
 		rl.DisableCache(true),
 		rl.DefaultData(func(w http.ResponseWriter, r *http.Request) (rl.D, error) {
 			return rl.D{
@@ -26,6 +27,7 @@ func main() {
 
 	appLayout, err := rl.New(
 		rl.Layout("app"),
+		rl.Debug(true),
 		rl.DisableCache(true),
 		rl.DefaultData(func(w http.ResponseWriter, r *http.Request) (rl.D, error) {
 			return rl.D{

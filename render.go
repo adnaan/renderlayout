@@ -1,6 +1,7 @@
 package renderlayout
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -28,6 +29,13 @@ func StaticData(d D) Data {
 
 type Option func(renderer *renderer)
 
+// Debug enables verbose logging. Prints the data being rendered in the template. Default is false
+func Debug(enable bool) Option {
+	return func(renderer *renderer) {
+		renderer.debug = enable
+	}
+}
+
 // DefaultData is the function called everytime before a template is rendered. Default is nil
 // This can be used to set template variables needed in every template.
 func DefaultData(data Data) Option {
@@ -36,7 +44,8 @@ func DefaultData(data Data) Option {
 	}
 }
 
-// ErrorKey changes the template variable name containing view errors. Default value is "error"
+// ErrorKey changes the template variable name containing view errors. Default value is "errors"
+// errors.Unwrap is used to find the error to be shown to the user, otherwise it's only logged.
 func ErrorKey(key string) Option {
 	return func(renderer *renderer) {
 		renderer.errorKey = key
@@ -106,13 +115,6 @@ func AddFuncs(funcMap template.FuncMap) Option {
 	}
 }
 
-// DefaultError sets the default value set in template variable "error". Default value is "Internal Error"
-func DefaultError(defaultError string) Option {
-	return func(renderer *renderer) {
-		renderer.defaultError = defaultError
-	}
-}
-
 // RenderError sets the error shown to the user when rendering fails completely. Default value is "Something went wrong."
 func RenderError(error string) Option {
 	return func(renderer *renderer) {
@@ -125,13 +127,13 @@ func New(opts ...Option) (Render, error) {
 	lr := &renderer{
 		root:         "templates",
 		partials:     "partials",
-		errorKey:     "error",
+		errorKey:     "errors",
 		layout:       "index",
 		layouts:      "layouts",
 		extension:    ".html",
-		defaultError: "Internal Error",
 		renderError:  "Something went wrong.",
 		disableCache: false,
+		debug:        false,
 		delims: goview.Delims{
 			Left:  "{{",
 			Right: "}}",
@@ -180,14 +182,17 @@ func New(opts ...Option) (Render, error) {
 	return func(view string, dataFuncs ...Data) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			viewData := make(map[string]interface{})
+			var errStrings []string
 			if lr.defaultData != nil {
 				defaultData, err := lr.defaultData(w, r)
 				if err != nil {
-					log.Printf("renderlayout:defaultData => %v \n ", err)
 					// a wrapped error is shown to the user.
 					viewError := errors.Unwrap(err)
 					if viewError != nil {
-						viewData[lr.errorKey] = first(strings.ToLower(viewError.Error()))
+						errStrings = append(errStrings, first(strings.ToLower(viewError.Error())))
+						log.Printf("user:renderlayout:defaultData => %v \n ", err)
+					} else {
+						log.Printf("internal: renderlayout:defaultData => %v \n ", err)
 					}
 				}
 
@@ -200,17 +205,13 @@ func New(opts ...Option) (Render, error) {
 			for _, dataFunc := range dataFuncs {
 				data, err := dataFunc(w, r)
 				if err != nil {
-					log.Printf("renderlayout:dataFunc => %v \n ", err)
 					// a wrapped error is shown to the user.
 					viewError := errors.Unwrap(err)
 					if viewError != nil {
-						if viewData[lr.errorKey] != nil {
-							viewData[lr.errorKey] = fmt.Sprintf("%s %s",
-								viewData[lr.errorKey],
-								first(strings.ToLower(viewError.Error())))
-						} else {
-							viewData[lr.errorKey] = first(strings.ToLower(viewError.Error()))
-						}
+						errStrings = append(errStrings, first(strings.ToLower(viewError.Error())))
+						log.Printf("user error => renderlayout:defaultData => %v \n ", err)
+					} else {
+						log.Printf("internal error => renderlayout:defaultData => %v \n ", err)
 					}
 				}
 
@@ -218,15 +219,35 @@ func New(opts ...Option) (Render, error) {
 					viewData[k] = v
 				}
 			}
+			viewData[lr.errorKey] = errStrings
 
-			err := lr.viewEngine.Render(w, http.StatusOK, view, viewData)
+			err = lr.viewEngine.Render(w, http.StatusOK, view, viewData)
 			if err != nil {
-				fmt.Printf("renderlayout:render error: %v with data %v \n", err, viewData)
+				log.Printf("renderlayout:render view [%s.%s],  error: %v, with data => \n %s \n",
+					view, lr.extension, err, pretty(viewData))
 				fmt.Fprintf(w, lr.renderError)
 				return
+			} else {
+				if lr.debug {
+					log.Printf("renderlayout:render view: [%s.%s], with data => \n %s \n",
+						view, lr.extension, pretty(viewData))
+				}
 			}
 		}
 	}, nil
+}
+
+func pretty(data map[string]interface{}) string {
+	var viewDataStr string
+	b, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		log.Printf("error marshalling:%v\n", err)
+		viewDataStr = fmt.Sprintf("%v", data)
+	} else {
+		viewDataStr = string(b)
+	}
+	return viewDataStr
+
 }
 
 type renderer struct {
@@ -237,7 +258,6 @@ type renderer struct {
 	partials     string
 	extension    string
 	disableCache bool
-	defaultError string
 	renderError  string
 	delims       goview.Delims
 	funcs        template.FuncMap
@@ -245,6 +265,7 @@ type renderer struct {
 	goviewConfig *goview.Config
 	viewEngine   *goview.ViewEngine
 	defaultData  Data
+	debug        bool
 }
 
 func first(str string) string {

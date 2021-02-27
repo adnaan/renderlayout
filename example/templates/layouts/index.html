@@ -7,14 +7,8 @@
 </head>
 <body>
     {{include "partials/navbar"}}
-    <div>
-        {{if .error}}
-            <div>
-                <p>{{.error}}</p>
-            </div>
-        {{end}}
-        {{template "content" .}}
-    </div>
+    {{template "errors" .}}
+    {{template "content" .}}
     {{include "partials/footer"}}
 </body>
 </html>
