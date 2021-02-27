@@ -14,8 +14,8 @@ func main() {
 	indexLayout, err := rl.New(
 		rl.Layout("index"),
 		rl.DisableCache(true),
-		rl.DefaultHandler(func(w http.ResponseWriter, r *http.Request) (rl.M, error) {
-			return rl.M{
+		rl.DefaultData(func(w http.ResponseWriter, r *http.Request) (rl.D, error) {
+			return rl.D{
 				"app_name": "renderlayout",
 			}, nil
 		}))
@@ -27,8 +27,8 @@ func main() {
 	appLayout, err := rl.New(
 		rl.Layout("app"),
 		rl.DisableCache(true),
-		rl.DefaultHandler(func(w http.ResponseWriter, r *http.Request) (rl.M, error) {
-			return rl.M{
+		rl.DefaultData(func(w http.ResponseWriter, r *http.Request) (rl.D, error) {
+			return rl.D{
 				"app_name": "renderlayout",
 			}, nil
 		}))
@@ -36,17 +36,17 @@ func main() {
 		log.Fatal(err)
 	}
 	r := chi.NewRouter()
-	r.Get("/", indexLayout.Handle("home",
-		func(w http.ResponseWriter, r *http.Request) (rl.M, error) {
-			return rl.M{
+	r.Get("/", indexLayout("home",
+		func(w http.ResponseWriter, r *http.Request) (rl.D, error) {
+			return rl.D{
 				"hello": "world",
 			}, nil
 		}))
-	r.Get("/app", appLayout.Handle("dashboard",
-		func(w http.ResponseWriter, r *http.Request) (rl.M, error) {
+	r.Get("/app", appLayout("dashboard",
+		func(w http.ResponseWriter, r *http.Request) (rl.D, error) {
 			err := fmt.Errorf("error in dashboard, %w",
 				errors.New("a wrapped error which is shown to the user"))
-			return rl.M{
+			return rl.D{
 				"dashboard": "dashboard",
 			}, err
 		}))

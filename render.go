@@ -14,75 +14,83 @@ import (
 	"github.com/foolin/goview"
 )
 
-type M map[string]interface{}
+type D map[string]interface{}
 
-type ViewHandlerFunc func(w http.ResponseWriter, r *http.Request) (M, error)
+type Data func(w http.ResponseWriter, r *http.Request) (D, error)
 
-type LayoutRendererOption func(renderer *LayoutRenderer)
+type Render func(view string, dataFuncs ...Data) http.HandlerFunc
 
-// DefaultHandler is the function called everytime before a template is rendered. Default is nil
+func StaticData(d D) Data {
+	return func(_ http.ResponseWriter, _ *http.Request) (D, error) {
+		return d, nil
+	}
+}
+
+type Option func(renderer *renderer)
+
+// DefaultData is the function called everytime before a template is rendered. Default is nil
 // This can be used to set template variables needed in every template.
-func DefaultHandler(handlerFunc ViewHandlerFunc) LayoutRendererOption {
-	return func(renderer *LayoutRenderer) {
-		renderer.defaultHandler = handlerFunc
+func DefaultData(data Data) Option {
+	return func(renderer *renderer) {
+		renderer.defaultData = data
 	}
 }
 
 // ErrorKey changes the template variable name containing view errors. Default value is "error"
-func ErrorKey(key string) LayoutRendererOption {
-	return func(renderer *LayoutRenderer) {
+func ErrorKey(key string) Option {
+	return func(renderer *renderer) {
 		renderer.errorKey = key
 	}
 }
 
 // TemplatesPath is the path to root directory for the templates. Default value is "templates"
-func TemplatesPath(templatesPath string) LayoutRendererOption {
-	return func(renderer *LayoutRenderer) {
+func TemplatesPath(templatesPath string) Option {
+	return func(renderer *renderer) {
 		renderer.root = templatesPath
 	}
 }
 
 // LayoutsPath sets name of the main template to be used. Default value is "layouts"
 // The path is searched within the templates layouts path. e.g. "templates/layouts"
-func LayoutsPath(layouts string) LayoutRendererOption {
-	return func(renderer *LayoutRenderer) {
+func LayoutsPath(layouts string) Option {
+	return func(renderer *renderer) {
 		renderer.layouts = layouts
 	}
 }
 
 // PartialsPath sets the path to main template to be used. Default value is "partials"
 // The path is searched within the templates path. e.g. "templates/partials"
-func PartialsPath(partials string) LayoutRendererOption {
-	return func(renderer *LayoutRenderer) {
+func PartialsPath(partials string) Option {
+	return func(renderer *renderer) {
 		renderer.partials = partials
 	}
 }
 
 // Layout sets name of the main template to be used. Default value is "index"
 // The path is searched within the templates layouts path. e.g. "templates/layouts/index.html"
-func Layout(layout string) LayoutRendererOption {
-	return func(renderer *LayoutRenderer) {
+func Layout(layout string) Option {
+	return func(renderer *renderer) {
 		renderer.layout = layout
 	}
 }
 
 // Extension sets the file extension for templates and partials. Default value is html
-func Extension(extension string) LayoutRendererOption {
-	return func(renderer *LayoutRenderer) {
+func Extension(extension string) Option {
+	return func(renderer *renderer) {
 		renderer.extension = fmt.Sprintf(".%s", extension)
 	}
 }
 
 // DisableCache disables the cache. Default value is false
-func DisableCache(disableCache bool) LayoutRendererOption {
-	return func(renderer *LayoutRenderer) {
+func DisableCache(disableCache bool) Option {
+	return func(renderer *renderer) {
 		renderer.disableCache = disableCache
 	}
 }
 
 // Delimiters sets the template delimiters. Default value is, left: {{ , right: }}
-func Delimiters(left, right string) LayoutRendererOption {
-	return func(renderer *LayoutRenderer) {
+func Delimiters(left, right string) Option {
+	return func(renderer *renderer) {
 		renderer.delims = goview.Delims{
 			Left:  left,
 			Right: right,
@@ -92,33 +100,29 @@ func Delimiters(left, right string) LayoutRendererOption {
 
 // AddFuncs adds additional templates funcs. Default is nil
 // github.com/Masterminds/sprig is already configured.
-func AddFuncs(funcMap template.FuncMap) LayoutRendererOption {
-	return func(renderer *LayoutRenderer) {
+func AddFuncs(funcMap template.FuncMap) Option {
+	return func(renderer *renderer) {
 		renderer.funcs = funcMap
 	}
 }
 
 // DefaultError sets the default value set in template variable "error". Default value is "Internal Error"
-func DefaultError(defaultError string) LayoutRendererOption {
-	return func(renderer *LayoutRenderer) {
+func DefaultError(defaultError string) Option {
+	return func(renderer *renderer) {
 		renderer.defaultError = defaultError
 	}
 }
 
 // RenderError sets the error shown to the user when rendering fails completely. Default value is "Something went wrong."
-func RenderError(error string) LayoutRendererOption {
-	return func(renderer *LayoutRenderer) {
+func RenderError(error string) Option {
+	return func(renderer *renderer) {
 		renderer.renderError = error
 	}
 }
 
-func StaticView(w http.ResponseWriter, r *http.Request) (M, error) {
-	return M{}, nil
-}
+func New(opts ...Option) (Render, error) {
 
-func New(opts ...LayoutRendererOption) (*LayoutRenderer, error) {
-
-	d := &LayoutRenderer{
+	lr := &renderer{
 		root:         "templates",
 		partials:     "partials",
 		errorKey:     "error",
@@ -135,11 +139,11 @@ func New(opts ...LayoutRendererOption) (*LayoutRenderer, error) {
 	}
 
 	for _, opt := range opts {
-		opt(d)
+		opt(lr)
 	}
 
 	allFuncs := make(template.FuncMap)
-	for k, v := range d.funcs {
+	for k, v := range lr.funcs {
 		allFuncs[k] = v
 	}
 
@@ -147,36 +151,85 @@ func New(opts ...LayoutRendererOption) (*LayoutRenderer, error) {
 		allFuncs[k] = v
 	}
 
-	d.funcs = allFuncs
+	lr.funcs = allFuncs
 
-	fileInfo, err := ioutil.ReadDir(fmt.Sprintf("%s/%s", d.root, d.partials))
+	fileInfo, err := ioutil.ReadDir(fmt.Sprintf("%s/%s", lr.root, lr.partials))
 	if err != nil {
 		return nil, err
 	}
 	var partials []string
 	for _, file := range fileInfo {
-		if !strings.HasSuffix(file.Name(), d.extension) {
+		if !strings.HasSuffix(file.Name(), lr.extension) {
 			continue
 		}
 		partials = append(partials, fmt.Sprintf("%s/%s",
-			d.partials,
-			strings.TrimSuffix(file.Name(), d.extension)))
+			lr.partials,
+			strings.TrimSuffix(file.Name(), lr.extension)))
 	}
 
 	viewEngine := goview.New(goview.Config{
-		Root:         d.root,
-		Extension:    d.extension,
-		Master:       fmt.Sprintf("%s/%s", d.layouts, d.layout),
+		Root:         lr.root,
+		Extension:    lr.extension,
+		Master:       fmt.Sprintf("%s/%s", lr.layouts, lr.layout),
 		Partials:     partials,
-		DisableCache: d.disableCache,
+		DisableCache: lr.disableCache,
 		Funcs:        sprig.FuncMap(), // http://masterminds.github.io/sprig/
 	})
 
-	d.viewEngine = viewEngine
-	return d, nil
+	lr.viewEngine = viewEngine
+	return func(view string, dataFuncs ...Data) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			viewData := make(map[string]interface{})
+			if lr.defaultData != nil {
+				defaultData, err := lr.defaultData(w, r)
+				if err != nil {
+					log.Printf("renderlayout:defaultData => %v \n ", err)
+					// a wrapped error is shown to the user.
+					viewError := errors.Unwrap(err)
+					if viewError != nil {
+						viewData[lr.errorKey] = first(strings.ToLower(viewError.Error()))
+					}
+				}
+
+				for k, v := range defaultData {
+					viewData[k] = v
+				}
+			}
+
+			// `errorkey` errors are merged. everything else is overwritten
+			for _, dataFunc := range dataFuncs {
+				data, err := dataFunc(w, r)
+				if err != nil {
+					log.Printf("renderlayout:dataFunc => %v \n ", err)
+					// a wrapped error is shown to the user.
+					viewError := errors.Unwrap(err)
+					if viewError != nil {
+						if viewData[lr.errorKey] != nil {
+							viewData[lr.errorKey] = fmt.Sprintf("%s %s",
+								viewData[lr.errorKey],
+								first(strings.ToLower(viewError.Error())))
+						} else {
+							viewData[lr.errorKey] = first(strings.ToLower(viewError.Error()))
+						}
+					}
+				}
+
+				for k, v := range data {
+					viewData[k] = v
+				}
+			}
+
+			err := lr.viewEngine.Render(w, http.StatusOK, view, viewData)
+			if err != nil {
+				fmt.Printf("renderlayout:render error: %v with data %v \n", err, viewData)
+				fmt.Fprintf(w, lr.renderError)
+				return
+			}
+		}
+	}, nil
 }
 
-type LayoutRenderer struct {
+type renderer struct {
 	errorKey     string
 	root         string
 	layout       string
@@ -189,9 +242,9 @@ type LayoutRenderer struct {
 	delims       goview.Delims
 	funcs        template.FuncMap
 
-	goviewConfig   *goview.Config
-	viewEngine     *goview.ViewEngine
-	defaultHandler ViewHandlerFunc
+	goviewConfig *goview.Config
+	viewEngine   *goview.ViewEngine
+	defaultData  Data
 }
 
 func first(str string) string {
@@ -201,95 +254,4 @@ func first(str string) string {
 	tmp := []rune(str)
 	tmp[0] = unicode.ToUpper(tmp[0])
 	return string(tmp)
-}
-
-func (lr *LayoutRenderer) Handle(view string, viewHandlerFuncs ...ViewHandlerFunc) http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		viewData := make(map[string]interface{})
-		if lr.defaultHandler != nil {
-			defaultData, err := lr.defaultHandler(w, r)
-			if err != nil {
-				log.Println("renderlayout:defaultHandler func => ", err)
-				viewError := errors.Unwrap(err)
-				if viewError != nil {
-					viewData[lr.errorKey] = first(strings.ToLower(viewError.Error()))
-				} else {
-					viewData[lr.errorKey] = lr.defaultError
-				}
-			}
-
-			for k, v := range defaultData {
-				viewData[k] = v
-			}
-		}
-
-		// `errorkey` errors are merged. everything else is overwritten
-		for _, viewHandlerFunc := range viewHandlerFuncs {
-			data, err := viewHandlerFunc(w, r)
-			if err != nil {
-				log.Println("renderlayout:viewHandlerFunc => ", err)
-				viewError := errors.Unwrap(err)
-				if viewError != nil {
-					if viewData[lr.errorKey] != nil {
-						viewData[lr.errorKey] = fmt.Sprintf("%s %s",
-							viewData[lr.errorKey],
-							first(strings.ToLower(viewError.Error())))
-					} else {
-						viewData[lr.errorKey] = first(strings.ToLower(viewError.Error()))
-					}
-				} else {
-					viewData[lr.errorKey] = lr.defaultError
-				}
-			}
-
-			for k, v := range data {
-				viewData[k] = v
-			}
-		}
-
-		err := lr.viewEngine.Render(w, http.StatusOK, view, viewData)
-		if err != nil {
-			fmt.Printf("renderlayout:render error: %v with data %v \n", err, viewData)
-			fmt.Fprintf(w, lr.renderError)
-			return
-		}
-
-	})
-}
-
-func (lr *LayoutRenderer) HandleStatic(view string) http.HandlerFunc {
-	return lr.HandleStaticWithData(view, nil)
-}
-
-func (lr *LayoutRenderer) HandleStaticWithData(view string, data M) http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		viewData := make(map[string]interface{})
-		if lr.defaultHandler != nil {
-			defaultData, err := lr.defaultHandler(w, r)
-			if err != nil {
-				log.Println("renderlayout:defaultHandler func => ", err)
-				viewError := errors.Unwrap(err)
-				if viewError != nil {
-					viewData[lr.errorKey] = first(strings.ToLower(viewError.Error()))
-				} else {
-					viewData[lr.errorKey] = lr.defaultError
-				}
-			}
-
-			for k, v := range defaultData {
-				viewData[k] = v
-			}
-		}
-
-		for k, v := range data {
-			viewData[k] = v
-		}
-
-		err := lr.viewEngine.Render(w, http.StatusOK, view, viewData)
-		if err != nil {
-			fmt.Printf("renderlayout:render error: %v with data %v \n", err, viewData)
-			fmt.Fprintf(w, lr.renderError)
-			return
-		}
-	})
 }
