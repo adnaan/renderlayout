@@ -219,7 +219,9 @@ func New(opts ...Option) (Render, error) {
 					viewData[k] = v
 				}
 			}
-			viewData[lr.errorKey] = errStrings
+			if len(errStrings) > 0 {
+				viewData[lr.errorKey] = errStrings
+			}
 
 			err = lr.viewEngine.Render(w, http.StatusOK, view, viewData)
 			if err != nil {
