@@ -175,7 +175,7 @@ func New(opts ...Option) (Render, error) {
 		Master:       fmt.Sprintf("%s/%s", lr.layouts, lr.layout),
 		Partials:     partials,
 		DisableCache: lr.disableCache,
-		Funcs:        sprig.FuncMap(), // http://masterminds.github.io/sprig/
+		Funcs:        lr.funcs, // http://masterminds.github.io/sprig/
 	})
 
 	lr.viewEngine = viewEngine
